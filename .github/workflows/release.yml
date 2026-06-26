@@ -1,0 +1,122 @@
+name: Release VSIX
+
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: "Version to release. Leave blank to use package.json."
+        required: false
+        type: string
+      draft:
+        description: "Create the release as a draft."
+        required: true
+        default: false
+        type: boolean
+      prerelease:
+        description: "Mark the release as a prerelease."
+        required: true
+        default: false
+        type: boolean
+
+permissions:
+  contents: write
+
+concurrency:
+  group: release-vsix-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  release:
+    name: Check, package, and release
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: package-lock.json
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Run checks
+        run: npm run check
+
+      - name: Package extension
+        run: npm run package
+
+      - name: Resolve release metadata
+        id: release
+        shell: bash
+        env:
+          INPUT_VERSION: ${{ inputs.version }}
+        run: |
+          set -euo pipefail
+
+          package_name="$(node -p "require('./package.json').name")"
+          package_version="$(node -p "require('./package.json').version")"
+          version="${INPUT_VERSION:-$package_version}"
+          version="${version#v}"
+
+          if [[ "$version" != "$package_version" ]]; then
+            echo "::error::Input version '$version' does not match package.json version '$package_version'. Update package.json/package-lock.json first, or leave the version input blank."
+            exit 1
+          fi
+
+          vsix="${package_name}-${version}.vsix"
+          if [[ ! -f "$vsix" ]]; then
+            echo "::error::Expected VSIX '$vsix' was not created."
+            ls -la *.vsix || true
+            exit 1
+          fi
+
+          {
+            echo "tag=v${version}"
+            echo "version=${version}"
+            echo "vsix=${vsix}"
+          } >> "$GITHUB_OUTPUT"
+
+      - name: Upload workflow artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ steps.release.outputs.vsix }}
+          path: ${{ steps.release.outputs.vsix }}
+          if-no-files-found: error
+
+      - name: Create GitHub release
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ steps.release.outputs.tag }}
+          VSIX: ${{ steps.release.outputs.vsix }}
+          DRAFT: ${{ inputs.draft }}
+          PRERELEASE: ${{ inputs.prerelease }}
+        run: |
+          set -euo pipefail
+
+          if gh release view "$TAG" >/dev/null 2>&1; then
+            echo "::error::Release '$TAG' already exists. Bump package.json version before releasing again."
+            exit 1
+          fi
+
+          args=(
+            release create "$TAG" "$VSIX"
+            --target "$GITHUB_SHA"
+            --title "$TAG"
+            --notes "VS Code extension build for $TAG."
+          )
+
+          if [[ "$DRAFT" == "true" ]]; then
+            args+=(--draft)
+          fi
+
+          if [[ "$PRERELEASE" == "true" ]]; then
+            args+=(--prerelease)
+          fi
+
+          gh "${args[@]}"

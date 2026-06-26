@@ -1,0 +1,199 @@
+{
+  "name": "codex-chat-organizer",
+  "displayName": "Codex Chat Organizer",
+  "description": "Browse, search, tag, rename, and archive local Codex chats.",
+  "version": "0.0.1",
+  "publisher": "local",
+  "private": true,
+  "license": "UNLICENSED",
+  "engines": {
+    "vscode": "^1.100.0"
+  },
+  "categories": [
+    "Other"
+  ],
+  "activationEvents": [
+    "onView:codexChatOrganizer.threads",
+    "onCommand:codexChatOrganizer.refresh",
+    "onCommand:codexChatOrganizer.search",
+    "onCommand:codexChatOrganizer.clearSearch",
+    "onCommand:codexChatOrganizer.renameThread",
+    "onCommand:codexChatOrganizer.archiveThread",
+    "onCommand:codexChatOrganizer.unarchiveThread",
+    "onCommand:codexChatOrganizer.setTags",
+    "onCommand:codexChatOrganizer.openTranscript",
+    "onCommand:codexChatOrganizer.resumeThread",
+    "onCommand:codexChatOrganizer.copySessionId",
+    "onCommand:codexChatOrganizer.checkCompatibility"
+  ],
+  "main": "./out/extension.js",
+  "contributes": {
+    "configuration": {
+      "title": "Codex Chat Organizer",
+      "properties": {
+        "codexChatOrganizer.codexHome": {
+          "type": "string",
+          "default": "",
+          "description": "Path to CODEX_HOME. Leave empty to use CODEX_HOME or ~/.codex."
+        },
+        "codexChatOrganizer.pythonPath": {
+          "type": "string",
+          "default": "",
+          "description": "Python executable used by the helper. Leave empty to auto-detect python3/python."
+        },
+        "codexChatOrganizer.showArchived": {
+          "type": "boolean",
+          "default": false,
+          "description": "Show archived Codex chats in the tree."
+        },
+        "codexChatOrganizer.searchTranscriptContent": {
+          "type": "boolean",
+          "default": true,
+          "description": "When searching, scan transcript JSONL files in addition to thread metadata."
+        }
+      }
+    },
+    "viewsContainers": {
+      "activitybar": [
+        {
+          "id": "codexChatOrganizer",
+          "title": "Codex Chats",
+          "icon": "resources/icon.svg"
+        }
+      ]
+    },
+    "views": {
+      "codexChatOrganizer": [
+        {
+          "id": "codexChatOrganizer.threads",
+          "name": "Chats"
+        }
+      ]
+    },
+    "commands": [
+      {
+        "command": "codexChatOrganizer.refresh",
+        "title": "Codex Chats: Refresh",
+        "icon": "$(refresh)"
+      },
+      {
+        "command": "codexChatOrganizer.search",
+        "title": "Codex Chats: Search",
+        "icon": "$(search)"
+      },
+      {
+        "command": "codexChatOrganizer.clearSearch",
+        "title": "Codex Chats: Clear Search",
+        "icon": "$(clear-all)"
+      },
+      {
+        "command": "codexChatOrganizer.renameThread",
+        "title": "Codex Chats: Rename Chat",
+        "icon": "$(edit)"
+      },
+      {
+        "command": "codexChatOrganizer.archiveThread",
+        "title": "Codex Chats: Archive Chat",
+        "icon": "$(archive)"
+      },
+      {
+        "command": "codexChatOrganizer.unarchiveThread",
+        "title": "Codex Chats: Unarchive Chat",
+        "icon": "$(history)"
+      },
+      {
+        "command": "codexChatOrganizer.setTags",
+        "title": "Codex Chats: Set Tags",
+        "icon": "$(tag)"
+      },
+      {
+        "command": "codexChatOrganizer.openTranscript",
+        "title": "Codex Chats: Open Transcript",
+        "icon": "$(book)"
+      },
+      {
+        "command": "codexChatOrganizer.resumeThread",
+        "title": "Codex Chats: Resume in Terminal",
+        "icon": "$(debug-start)"
+      },
+      {
+        "command": "codexChatOrganizer.copySessionId",
+        "title": "Codex Chats: Copy Session ID",
+        "icon": "$(copy)"
+      },
+      {
+        "command": "codexChatOrganizer.checkCompatibility",
+        "title": "Codex Chats: Check Compatibility"
+      }
+    ],
+    "menus": {
+      "view/title": [
+        {
+          "command": "codexChatOrganizer.search",
+          "when": "view == codexChatOrganizer.threads",
+          "group": "navigation@1"
+        },
+        {
+          "command": "codexChatOrganizer.clearSearch",
+          "when": "view == codexChatOrganizer.threads && codexChatOrganizer.hasSearch",
+          "group": "navigation@2"
+        },
+        {
+          "command": "codexChatOrganizer.refresh",
+          "when": "view == codexChatOrganizer.threads",
+          "group": "navigation@3"
+        }
+      ],
+      "view/item/context": [
+        {
+          "command": "codexChatOrganizer.openTranscript",
+          "when": "view == codexChatOrganizer.threads && (viewItem == thread || viewItem == archivedThread)",
+          "group": "inline@1"
+        },
+        {
+          "command": "codexChatOrganizer.renameThread",
+          "when": "view == codexChatOrganizer.threads && (viewItem == thread || viewItem == archivedThread)",
+          "group": "inline@2"
+        },
+        {
+          "command": "codexChatOrganizer.archiveThread",
+          "when": "view == codexChatOrganizer.threads && viewItem == thread",
+          "group": "manage@1"
+        },
+        {
+          "command": "codexChatOrganizer.unarchiveThread",
+          "when": "view == codexChatOrganizer.threads && viewItem == archivedThread",
+          "group": "manage@1"
+        },
+        {
+          "command": "codexChatOrganizer.setTags",
+          "when": "view == codexChatOrganizer.threads && (viewItem == thread || viewItem == archivedThread)",
+          "group": "manage@2"
+        },
+        {
+          "command": "codexChatOrganizer.resumeThread",
+          "when": "view == codexChatOrganizer.threads && (viewItem == thread || viewItem == archivedThread)",
+          "group": "manage@3"
+        },
+        {
+          "command": "codexChatOrganizer.copySessionId",
+          "when": "view == codexChatOrganizer.threads && (viewItem == thread || viewItem == archivedThread)",
+          "group": "manage@4"
+        }
+      ]
+    }
+  },
+  "scripts": {
+    "check": "npm run compile && npm run smoke",
+    "compile": "tsc -p ./",
+    "smoke": "python3 scripts/smoke_test.py",
+    "watch": "tsc -watch -p ./",
+    "package": "vsce package --no-dependencies --allow-missing-repository --allow-star-activation"
+  },
+  "devDependencies": {
+    "@types/node": "^22.10.0",
+    "@types/vscode": "^1.100.0",
+    "@vscode/vsce": "^3.2.1",
+    "typescript": "^5.7.0"
+  }
+}
