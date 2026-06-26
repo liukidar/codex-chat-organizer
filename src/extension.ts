@@ -45,7 +45,17 @@ interface TranscriptResponse extends HelperResponse {
   markdown: string;
 }
 
-type TreeNode = ProjectNode | ThreadNode;
+type TreeNode = ProjectNode | ThreadNode | StatusNode;
+
+class StatusNode extends vscode.TreeItem {
+  constructor(label: string, description: string | undefined, icon: string, command?: vscode.Command) {
+    super(label, vscode.TreeItemCollapsibleState.None);
+    this.description = description;
+    this.contextValue = "status";
+    this.iconPath = new vscode.ThemeIcon(icon);
+    this.command = command;
+  }
+}
 
 class ProjectNode extends vscode.TreeItem {
   constructor(
@@ -81,8 +91,13 @@ class CodexThreadProvider implements vscode.TreeDataProvider<TreeNode> {
   private threads: ThreadRecord[] = [];
   private query = "";
   private schema: SchemaResponse | null = null;
+  private statusMessage: string | null = "Loading Codex chats...";
+  private errorMessage: string | null = null;
 
-  constructor(private readonly context: vscode.ExtensionContext) {}
+  constructor(
+    private readonly context: vscode.ExtensionContext,
+    private readonly output: vscode.OutputChannel,
+  ) {}
 
   get activeQuery(): string {
     return this.query;
@@ -90,10 +105,19 @@ class CodexThreadProvider implements vscode.TreeDataProvider<TreeNode> {
 
   async refresh(query = this.query): Promise<void> {
     this.query = query;
+    this.statusMessage = "Loading Codex chats...";
+    this.errorMessage = null;
+    this.emitter.fire();
+
     await vscode.commands.executeCommand("setContext", "codexChatOrganizer.hasSearch", Boolean(this.query));
     const config = vscode.workspace.getConfiguration("codexChatOrganizer");
     const includeArchived = config.get<boolean>("showArchived", false);
     const searchContent = config.get<boolean>("searchTranscriptContent", true);
+    this.log(
+      `Refreshing chats: includeArchived=${includeArchived}, searchContent=${searchContent}, query=${
+        this.query ? "<set>" : "<empty>"
+      }`,
+    );
     const args = [
       "list",
       "--limit",
@@ -102,11 +126,24 @@ class CodexThreadProvider implements vscode.TreeDataProvider<TreeNode> {
       ...(this.query ? ["--query", this.query] : []),
       ...(searchContent ? ["--search-content"] : []),
     ];
-    const response = await runHelper<ListResponse>(this.context, args);
-    this.schema = response.schema;
-    this.threads = response.ok ? response.threads : [];
-    if (!response.ok) {
-      vscode.window.showWarningMessage(`Codex Chat Organizer is read-only: ${response.schema?.problems?.join("; ") || response.error}`);
+    try {
+      const response = await runHelper<ListResponse>(this.context, args, this.output);
+      this.schema = response.schema;
+      this.threads = response.ok ? response.threads : [];
+      if (response.ok) {
+        this.statusMessage = this.threads.length ? null : "No Codex chats found.";
+        this.log(`Loaded ${this.threads.length} chat(s).`);
+      } else {
+        this.errorMessage = response.schema?.problems?.join("; ") || response.error || "Unknown helper error.";
+        this.statusMessage = "Could not load Codex chats.";
+        this.log(`Helper returned not ok: ${this.errorMessage}`);
+        vscode.window.showWarningMessage(`Codex Chat Organizer is read-only: ${this.errorMessage}`);
+      }
+    } catch (error) {
+      this.threads = [];
+      this.errorMessage = errorMessage(error);
+      this.statusMessage = "Could not load Codex chats.";
+      this.log(`Refresh failed:\n${errorDetails(error)}`);
     }
     this.emitter.fire();
   }
@@ -122,6 +159,25 @@ class CodexThreadProvider implements vscode.TreeDataProvider<TreeNode> {
     if (element instanceof ThreadNode) {
       return [];
     }
+    if (element instanceof StatusNode) {
+      return [];
+    }
+    if (this.errorMessage) {
+      return [
+        new StatusNode("Could not load Codex chats", this.errorMessage, "warning", {
+          command: "codexChatOrganizer.showDiagnostics",
+          title: "Show Diagnostics",
+        }),
+      ];
+    }
+    if (!this.threads.length) {
+      return [
+        new StatusNode(this.statusMessage || "No Codex chats found", "Open diagnostics for details", "info", {
+          command: "codexChatOrganizer.showDiagnostics",
+          title: "Show Diagnostics",
+        }),
+      ];
+    }
     if (this.query) {
       return this.threads.map((thread) => new ThreadNode(thread));
     }
@@ -133,23 +189,42 @@ class CodexThreadProvider implements vscode.TreeDataProvider<TreeNode> {
   }
 
   async checkCompatibility(showSuccess: boolean): Promise<boolean> {
-    const schema = await runHelper<SchemaResponse>(this.context, ["schema"]);
-    this.schema = schema;
-    if (schema.ok) {
-      if (showSuccess) {
-        vscode.window.showInformationMessage(
-          `Codex Chat Organizer is compatible. Found ${schema.thread_count ?? 0} threads in ${schema.db_path}.`,
-        );
+    try {
+      const schema = await runHelper<SchemaResponse>(this.context, ["schema"], this.output);
+      this.schema = schema;
+      if (schema.ok) {
+        this.log(`Compatibility ok: ${schema.thread_count ?? 0} thread(s), db=${schema.db_path}`);
+        if (showSuccess) {
+          vscode.window.showInformationMessage(
+            `Codex Chat Organizer is compatible. Found ${schema.thread_count ?? 0} threads in ${schema.db_path}.`,
+          );
+        }
+        return true;
       }
-      return true;
+      const details = schema.problems.join("; ");
+      this.log(`Compatibility failed: ${details}`);
+      vscode.window.showErrorMessage(`Unsupported Codex state: ${details}`);
+      return false;
+    } catch (error) {
+      this.log(`Compatibility check failed:\n${errorDetails(error)}`);
+      if (showSuccess) {
+        vscode.window.showErrorMessage(`Could not check Codex compatibility: ${errorMessage(error)}`);
+      }
+      return false;
     }
-    vscode.window.showErrorMessage(`Unsupported Codex state: ${schema.problems.join("; ")}`);
-    return false;
+  }
+
+  private log(message: string): void {
+    this.output.appendLine(`[${new Date().toISOString()}] ${message}`);
   }
 }
 
 export async function activate(context: vscode.ExtensionContext): Promise<void> {
-  const provider = new CodexThreadProvider(context);
+  const output = vscode.window.createOutputChannel("Codex Chat Organizer");
+  context.subscriptions.push(output);
+  output.appendLine(`[${new Date().toISOString()}] Activating Codex Chat Organizer ${context.extension.packageJSON.version}`);
+
+  const provider = new CodexThreadProvider(context, output);
   context.subscriptions.push(vscode.window.registerTreeDataProvider("codexChatOrganizer.threads", provider));
 
   context.subscriptions.push(
@@ -183,7 +258,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
       if (title === undefined) {
         return;
       }
-      await mutateCodexState(context, ["rename", "--thread-id", thread.id, "--title", title.trim()]);
+      await mutateCodexState(context, ["rename", "--thread-id", thread.id, "--title", title.trim()], output);
       await provider.refresh();
     }),
     vscode.commands.registerCommand("codexChatOrganizer.archiveThread", async (node?: ThreadNode) => {
@@ -199,7 +274,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
       if (answer !== "Archive") {
         return;
       }
-      await mutateCodexState(context, ["archive", "--thread-id", thread.id, "--archived", "true"]);
+      await mutateCodexState(context, ["archive", "--thread-id", thread.id, "--archived", "true"], output);
       await provider.refresh();
     }),
     vscode.commands.registerCommand("codexChatOrganizer.unarchiveThread", async (node?: ThreadNode) => {
@@ -207,7 +282,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
       if (!thread) {
         return;
       }
-      await mutateCodexState(context, ["archive", "--thread-id", thread.id, "--archived", "false"]);
+      await mutateCodexState(context, ["archive", "--thread-id", thread.id, "--archived", "false"], output);
       await provider.refresh();
     }),
     vscode.commands.registerCommand("codexChatOrganizer.setTags", async (node?: ThreadNode) => {
@@ -223,7 +298,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
       if (tags === undefined) {
         return;
       }
-      await runHelper<HelperResponse>(context, ["set-tags", "--thread-id", thread.id, "--tags", tags]);
+      await runHelper<HelperResponse>(context, ["set-tags", "--thread-id", thread.id, "--tags", tags], output);
       await provider.refresh();
     }),
     vscode.commands.registerCommand("codexChatOrganizer.openTranscript", async (node?: ThreadNode) => {
@@ -231,7 +306,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
       if (!thread) {
         return;
       }
-      const response = await runHelper<TranscriptResponse>(context, ["transcript", "--thread-id", thread.id]);
+      const response = await runHelper<TranscriptResponse>(context, ["transcript", "--thread-id", thread.id], output);
       const document = await vscode.workspace.openTextDocument({
         content: response.markdown,
         language: "markdown",
@@ -258,6 +333,9 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
     vscode.commands.registerCommand("codexChatOrganizer.checkCompatibility", async () => {
       await provider.checkCompatibility(true);
     }),
+    vscode.commands.registerCommand("codexChatOrganizer.showDiagnostics", () => {
+      output.show();
+    }),
   );
 
   context.subscriptions.push(
@@ -282,8 +360,12 @@ function requireThread(node?: ThreadNode): ThreadRecord | undefined {
   return undefined;
 }
 
-async function mutateCodexState(context: vscode.ExtensionContext, args: string[]): Promise<void> {
-  const response = await runHelper<HelperResponse>(context, args);
+async function mutateCodexState(
+  context: vscode.ExtensionContext,
+  args: string[],
+  output?: vscode.OutputChannel,
+): Promise<void> {
+  const response = await runHelper<HelperResponse>(context, args, output);
   const backup = typeof response.backup_dir === "string" ? response.backup_dir : undefined;
   vscode.window.showInformationMessage(`Codex state updated.${backup ? ` Backup: ${backup}` : ""}`);
 }
@@ -352,7 +434,11 @@ function shortProject(cwd: string): string {
   return parent ? `${parent}/${base}` : base;
 }
 
-async function runHelper<T extends HelperResponse>(context: vscode.ExtensionContext, args: string[]): Promise<T> {
+async function runHelper<T extends HelperResponse>(
+  context: vscode.ExtensionContext,
+  args: string[],
+  output?: vscode.OutputChannel,
+): Promise<T> {
   const helperPath = context.asAbsolutePath(path.join("scripts", "codex_state.py"));
   const codexHome = vscode.workspace.getConfiguration("codexChatOrganizer").get<string>("codexHome", "").trim();
   const helperArgs = [...(codexHome ? ["--codex-home", codexHome] : []), ...args];
@@ -360,8 +446,16 @@ async function runHelper<T extends HelperResponse>(context: vscode.ExtensionCont
 
   for (const python of pythonCandidates()) {
     try {
+      output?.appendLine(
+        `[${new Date().toISOString()}] Running helper: ${python} ${[helperPath, ...redactArgs(helperArgs)].join(" ")}`,
+      );
       const stdout = await execFile(python, [helperPath, ...helperArgs]);
-      const parsed = JSON.parse(stdout) as T;
+      let parsed: T;
+      try {
+        parsed = JSON.parse(stdout) as T;
+      } catch (error) {
+        throw new Error(`Helper returned invalid JSON: ${errorMessage(error)}\n${stdout.slice(0, 2000)}`);
+      }
       if (!parsed.ok && parsed.error) {
         throw new Error(parsed.error);
       }
@@ -372,6 +466,22 @@ async function runHelper<T extends HelperResponse>(context: vscode.ExtensionCont
   }
 
   throw new Error(`Could not run Codex Chat Organizer helper.\n${errors.join("\n")}`);
+}
+
+function redactArgs(args: string[]): string[] {
+  const redactedAfter = new Set(["--query", "--tags", "--title"]);
+  return args.map((arg, index) => (redactedAfter.has(args[index - 1]) ? "<redacted>" : arg));
+}
+
+function errorMessage(error: unknown): string {
+  return error instanceof Error ? error.message : String(error);
+}
+
+function errorDetails(error: unknown): string {
+  if (error instanceof Error) {
+    return error.stack || error.message;
+  }
+  return String(error);
 }
 
 function pythonCandidates(): string[] {

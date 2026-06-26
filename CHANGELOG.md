@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.0.2
+
+- Add a diagnostics output channel and visible tree status rows for load errors.
+- Add **Codex Chats: Show Diagnostics**.
+
 ## 0.0.1
 
 - Initial local-only Codex chat organizer.

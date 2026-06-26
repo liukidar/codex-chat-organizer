@@ -95,7 +95,7 @@ npm run package
 Install it:
 
 ```bash
-code --install-extension codex-chat-organizer-0.0.1.vsix
+code --install-extension codex-chat-organizer-0.0.2.vsix --force
 ```
 
 Reload VS Code after installing.
@@ -141,6 +141,25 @@ curl -L -o codex-chat-organizer.vsix \
 
 code --install-extension codex-chat-organizer.vsix
 ```
+
+## Troubleshooting
+
+If the **Codex Chats** view is empty:
+
+1. Run **Codex Chats: Refresh** from the Command Palette.
+2. Run **Codex Chats: Show Diagnostics** and inspect the output channel.
+3. Run **Codex Chats: Check Compatibility**.
+
+The helper can also be checked directly from the extension repo:
+
+```bash
+python3 scripts/codex_state.py schema
+python3 scripts/codex_state.py list
+python3 scripts/codex_state.py list --include-archived
+```
+
+If direct helper commands show chats but VS Code does not, reinstall the latest
+VSIX with `--force` and reload VS Code.
 
 ## Settings
 

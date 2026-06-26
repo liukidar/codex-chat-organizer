@@ -2,7 +2,7 @@
   "name": "codex-chat-organizer",
   "displayName": "Codex Chat Organizer",
   "description": "Browse, search, tag, rename, and archive local Codex chats.",
-  "version": "0.0.1",
+  "version": "0.0.2",
   "publisher": "local",
   "private": true,
   "license": "UNLICENSED",
@@ -24,7 +24,8 @@
     "onCommand:codexChatOrganizer.openTranscript",
     "onCommand:codexChatOrganizer.resumeThread",
     "onCommand:codexChatOrganizer.copySessionId",
-    "onCommand:codexChatOrganizer.checkCompatibility"
+    "onCommand:codexChatOrganizer.checkCompatibility",
+    "onCommand:codexChatOrganizer.showDiagnostics"
   ],
   "main": "./out/extension.js",
   "contributes": {
@@ -124,6 +125,11 @@
       {
         "command": "codexChatOrganizer.checkCompatibility",
         "title": "Codex Chats: Check Compatibility"
+      },
+      {
+        "command": "codexChatOrganizer.showDiagnostics",
+        "title": "Codex Chats: Show Diagnostics",
+        "icon": "$(output)"
       }
     ],
     "menus": {
@@ -142,6 +148,11 @@
           "command": "codexChatOrganizer.refresh",
           "when": "view == codexChatOrganizer.threads",
           "group": "navigation@3"
+        },
+        {
+          "command": "codexChatOrganizer.showDiagnostics",
+          "when": "view == codexChatOrganizer.threads",
+          "group": "navigation@4"
         }
       ],
       "view/item/context": [
