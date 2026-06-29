@@ -4,3 +4,8 @@ tsconfig.json
 *.vsix
 **/*.map
 .github/**
+.vscode/**
+.gitignore
+.editorconfig
+.npmrc
+CONTRIBUTING.md

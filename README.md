@@ -1,27 +1,43 @@
 # Codex Chat Organizer
 
-Local VS Code extension for browsing, searching, renaming, tagging, archiving,
-and resuming Codex chats stored under `CODEX_HOME` (`~/.codex` by default).
+Local VS Code extension for browsing, searching, project-organizing, renaming,
+tagging, archiving, and deleting Codex chats stored under `CODEX_HOME`
+(`~/.codex` by default).
 
-This is intended to be a standalone repository. You can move this folder out of
-the current workspace and initialize it as its own git repo.
+This is a standalone repository:
+
+```bash
+git clone https://github.com/liukidar/codex-chat-organizer.git
+cd codex-chat-organizer
+npm install
+npm run check
+```
 
 ## Features
 
 - Browse local Codex chats from `state_*.sqlite`.
-- Group chats by project working directory.
-- Search titles, metadata, tags, and transcript JSONL content.
-- Open a readable Markdown transcript.
+- Organize chats into custom organizer projects.
+- Select one active project above the chat list.
+- Drag chats onto project filters to move them.
+- Filter project chips and chat titles locally as you type.
+- Show chats as compact cards with title, last edited time, transcript size,
+  and a colored filesystem folder tag.
+- Clamp long chat titles with an expand/collapse control.
+- Add and remove organizer tags inline.
+- Press Enter in chat search to run full-text search across titles, metadata,
+  tags, and transcript JSONL content in a separate results section.
+- Click a chat card to open it in the Codex extension, with a readable Markdown
+  transcript fallback.
 - Rename chats in Codex local state so the title can show up in Codex.
 - Archive and unarchive chats in Codex local state.
-- Resume a chat by launching `codex resume <session-id>` in a terminal.
-- Copy session IDs.
-- Store organizer-only tags in `~/.codex-chat-organizer/metadata.json`.
+- Delete chats from Codex local state.
+- Store organizer-only projects, project assignments, and tags in
+  `~/.codex-chat-organizer/metadata.json`.
 - Create timestamped backups before every Codex-state mutation.
 
 ## Safety Model
 
-Codex does not currently expose a public local rename/archive API for external
+Codex does not currently expose a public local rename/archive/delete API for external
 extensions. This extension writes to Codex's private local state after a
 compatibility check.
 
@@ -29,7 +45,7 @@ On startup, the extension checks that Codex state still has the expected
 `threads` schema. If the schema is not recognized, the extension switches into a
 read-only/error state instead of guessing.
 
-Before every rename/archive/unarchive, the extension backs up:
+Before every rename/archive/unarchive/delete, the extension backs up:
 
 - `state_*.sqlite`
 - `state_*.sqlite-wal`
@@ -42,7 +58,7 @@ Backups are written under:
 ~/.codex-chat-organizer/backups/
 ```
 
-Tags are stored separately and do not affect Codex:
+Projects and tags are stored separately and do not affect Codex:
 
 ```text
 ~/.codex-chat-organizer/metadata.json
@@ -84,6 +100,12 @@ Launch a development host:
 2. Press `F5`.
 3. In the Extension Development Host, open the **Codex Chats** activity bar view.
 
+## CI
+
+GitHub Actions runs `npm ci` and `npm run check` on pushes and pull requests.
+The check compiles TypeScript and runs the Python smoke test against a temporary
+fake Codex home.
+
 ## Package
 
 Build a `.vsix`:
@@ -95,7 +117,7 @@ npm run package
 Install it:
 
 ```bash
-code --install-extension codex-chat-organizer-0.0.2.vsix --force
+code --install-extension codex-chat-organizer-0.0.3-rc.5.vsix --force
 ```
 
 Reload VS Code after installing.
@@ -116,19 +138,19 @@ To create a release:
 3. Leave `version` blank to release the current `package.json` version.
 4. Optionally choose `draft` or `prerelease`.
 
-The workflow creates a tag named from `package.json`, for example `v0.0.1`, and
+The workflow creates a tag named from `package.json`, for example `v0.0.3-rc.5`, and
 attaches:
 
 ```text
-codex-chat-organizer-0.0.1.vsix
+codex-chat-organizer-0.0.3-rc.5.vsix
 ```
 
 For a new release, bump the package version first:
 
 ```bash
-npm version 0.0.2 --no-git-tag-version
+npm version 0.0.3-rc.6 --no-git-tag-version
 git add package.json package-lock.json
-git commit -m "Bump extension version to 0.0.2"
+git commit -m "Bump extension version to 0.0.3-rc.6"
 git push
 ```
 
@@ -137,7 +159,7 @@ from its release asset:
 
 ```bash
 curl -L -o codex-chat-organizer.vsix \
-  https://github.com/YOUR_USER/codex-chat-organizer/releases/download/v0.0.1/codex-chat-organizer-0.0.1.vsix
+  https://github.com/YOUR_USER/codex-chat-organizer/releases/download/v0.0.3-rc.5/codex-chat-organizer-0.0.3-rc.5.vsix
 
 code --install-extension codex-chat-organizer.vsix
 ```
@@ -173,16 +195,11 @@ VSIX with `--force` and reload VS Code.
 - **Codex Chats: Refresh**
 - **Codex Chats: Search**
 - **Codex Chats: Clear Search**
-- **Codex Chats: Rename Chat**
-- **Codex Chats: Archive Chat**
-- **Codex Chats: Unarchive Chat**
-- **Codex Chats: Set Tags**
-- **Codex Chats: Open Transcript**
-- **Codex Chats: Resume in Terminal**
-- **Codex Chats: Copy Session ID**
+- **Codex Chats: New Project**
 - **Codex Chats: Check Compatibility**
+- **Codex Chats: Show Diagnostics**
 
-Most commands are available from the tree item context menu.
+Chat-level actions are available from each card.
 
 ## Data Sources
 
@@ -208,6 +225,9 @@ Written by this extension:
 ~/.codex-chat-organizer/metadata.json
 ~/.codex-chat-organizer/backups/
 ```
+
+`metadata.json` stores custom organizer projects, one project assignment per
+chat, and organizer-only tags. New chats start in **No Project** until moved.
 
 ## Recovery
 
